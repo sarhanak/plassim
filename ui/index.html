@@ -28,16 +28,20 @@
         <input id="clientId" type="text" value="demo" />
         <label>Purchases Excel/CSV</label>
         <input id="purchasesFile" type="file" />
+        <button id="previewPurchasesBtn">Preview CSV</button>
         <button id="uploadPurchasesBtn">Upload Purchases</button>
         <div class="status" id="purchasesStatus"></div>
+        <div id="purchasesPreview"></div>
       </div>
 
       <div class="card">
         <h2>2) Upload GSTR-2B</h2>
         <label>2B Excel/CSV</label>
         <input id="twoBFile" type="file" />
+        <button id="previewTwoBBtn">Preview CSV</button>
         <button id="uploadTwoBBtn">Upload 2B</button>
         <div class="status" id="twoBStatus"></div>
+        <div id="twoBPreview"></div>
       </div>
 
       <div class="card">
@@ -58,8 +62,10 @@
         <h2>5) Upload Sales (GSTR-1)</h2>
         <label>Sales Excel/CSV</label>
         <input id="salesFile" type="file" />
+        <button id="previewSalesBtn">Preview CSV</button>
         <button id="uploadSalesBtn">Upload Sales</button>
         <div class="status" id="salesStatus"></div>
+        <div id="salesPreview"></div>
       </div>
 
       <div class="card">
@@ -81,6 +87,22 @@
 
   <div class="card">
     <h2>Review</h2>
+    <div class="row" style="align-items: end; gap: 8px;">
+      <div>
+        <label>Status filter</label>
+        <select id="statusFilter">
+          <option value="">All</option>
+          <option value="MATCHED">MATCHED</option>
+          <option value="MISMATCH">MISMATCH</option>
+        </select>
+      </div>
+      <div>
+        <label>Reason contains</label>
+        <input id="reasonFilter" type="text" placeholder="e.g. AMOUNT" />
+      </div>
+      <button id="applyFilterBtn">Apply</button>
+      <button id="clearFilterBtn">Clear</button>
+    </div>
     <button id="refreshReviewBtn">Refresh Rows</button>
     <div id="reviewRows"></div>
   </div>
@@ -155,23 +177,70 @@
     $("uploadSalesBtn").onclick = uploadSales;
     $("exportGstr1Btn").onclick = exportGstr1;
 
-    async function refreshReview() {
-      if (!datasetId) { $("reviewRows").textContent = "No dataset_id"; return; }
-      const resp = await fetch(`/review/${datasetId}`);
-      const data = await resp.json();
-      const html = (data.rows || []).slice(0, 25).map(r => {
+    function renderRows(data) {
+      const statusSel = $("statusFilter").value || "";
+      const reasonSub = ($("reasonFilter").value || "").toLowerCase();
+      const rows = (data.rows || []).filter(r => {
+        const st = (r.recon && r.recon.status) || "";
+        const reasons = (r.recon && r.recon.reason_codes) || [];
+        const okStatus = !statusSel || st === statusSel;
+        const okReason = !reasonSub || reasons.join(',').toLowerCase().includes(reasonSub);
+        return okStatus && okReason;
+      }).slice(0, 200);
+      const html = rows.map((r, idx) => {
         const p = r.purchase || {}; const rec = r.recon || {}; const b = r.two_b || {};
+        const nudge = `Dear Vendor, please verify GST invoice ${p.invoice_no_norm || p.invoice_no} for GSTIN ${p.supplier_gstin}. Our records show total ${p.total_amount} dated ${p.invoice_date}. GSTR-2B shows ${b.total_amount || 'NA'} dated ${b.invoice_date || 'NA'}. Kindly address the discrepancy at the earliest.`;
         return `<div style="margin:8px 0;padding:8px;border:1px solid #eee">
-          <div><b>${p.invoice_no_norm || p.invoice_no}</b> — ${rec.status || "-"} — ${rec.reason_codes ? rec.reason_codes.join(',') : ''}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><b>${p.invoice_no_norm || p.invoice_no || ''}</b> — ${rec.status || "-"} — ${(rec.reason_codes || []).join(',')}</div>
+            <div><button data-idx="${idx}" class="copyNudgeBtn">Copy Nudge</button></div>
+          </div>
           <div style="display:flex;gap:16px;font-size:12px">
             <div><b>Our</b><br/>Amt: ${p.total_amount} | Date: ${p.invoice_date}</div>
             <div><b>2B</b><br/>Amt: ${b.total_amount || ''} | Date: ${b.invoice_date || ''}</div>
           </div>
+          <textarea style="width:100%;height:72px;margin-top:6px;">${nudge}</textarea>
         </div>`;
       }).join("");
       $("reviewRows").innerHTML = html || "No rows";
+      // Wire copy buttons
+      document.querySelectorAll('.copyNudgeBtn').forEach((btn, i) => {
+        btn.addEventListener('click', () => {
+          const ta = btn.parentElement.parentElement.parentElement.querySelector('textarea');
+          if (ta) { ta.select(); document.execCommand('copy'); }
+        });
+      });
+    }
+
+    async function refreshReview() {
+      if (!datasetId) { $("reviewRows").textContent = "No dataset_id"; return; }
+      const resp = await fetch(`/review/${datasetId}`);
+      const data = await resp.json();
+      renderRows(data);
     }
     $("refreshReviewBtn").onclick = refreshReview;
+
+    $("applyFilterBtn").onclick = refreshReview;
+    $("clearFilterBtn").onclick = () => { $("statusFilter").value = ""; $("reasonFilter").value = ""; refreshReview(); };
+
+    function previewCsv(file, targetId) {
+      const out = $(targetId);
+      out.innerHTML = "";
+      if (!file || !file.name.toLowerCase().endsWith('.csv')) { out.textContent = "Only CSV preview supported"; return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = reader.result || '';
+        const lines = String(text).split(/\r?\n/).slice(0, 12);
+        const pre = document.createElement('pre');
+        pre.textContent = lines.join('\n');
+        out.innerHTML = "";
+        out.appendChild(pre);
+      };
+      reader.readAsText(file);
+    }
+    $("previewPurchasesBtn").onclick = () => previewCsv($("purchasesFile").files[0], "purchasesPreview");
+    $("previewTwoBBtn").onclick = () => previewCsv($("twoBFile").files[0], "twoBPreview");
+    $("previewSalesBtn").onclick = () => previewCsv($("salesFile").files[0], "salesPreview");
   </script>
 </body>
 </html>
