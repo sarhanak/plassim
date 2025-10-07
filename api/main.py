@@ -38,9 +38,11 @@ from api.routers.uploads import router as uploads_router  # noqa: E402
 from api.routers.reconcile import router as reconcile_router  # noqa: E402
 from api.routers.exports import router as exports_router  # noqa: E402
 from api.routers.ops import router as ops_router  # noqa: E402
+from api.routers.presets import router as presets_router  # noqa: E402
 
 app.include_router(uploads_router)
 app.include_router(reconcile_router)
 app.include_router(exports_router)
 app.include_router(ops_router)
+app.include_router(presets_router)
 
