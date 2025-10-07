@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GST-Recon-Engine UI</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+    h2 { margin-top: 24px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    label { display: block; margin: 8px 0 4px; }
+    input[type="file"], input[type="text"], button { margin-bottom: 8px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .col { flex: 1 1 360px; min-width: 320px; }
+    code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; }
+    .links a { display: block; margin: 4px 0; }
+    .status { padding: 8px; background: #f0f7ff; border: 1px solid #cde3ff; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>GST-Recon-Engine v1.0 — Local UI</h1>
+
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <h2>1) Upload Purchases</h2>
+        <label>Client ID</label>
+        <input id="clientId" type="text" value="demo" />
+        <label>Purchases Excel/CSV</label>
+        <input id="purchasesFile" type="file" />
+        <button id="uploadPurchasesBtn">Upload Purchases</button>
+        <div class="status" id="purchasesStatus"></div>
+      </div>
+
+      <div class="card">
+        <h2>2) Upload GSTR-2B</h2>
+        <label>2B Excel/CSV</label>
+        <input id="twoBFile" type="file" />
+        <button id="uploadTwoBBtn">Upload 2B</button>
+        <div class="status" id="twoBStatus"></div>
+      </div>
+
+      <div class="card">
+        <h2>3) Reconcile</h2>
+        <button id="reconcileBtn">Run Reconcile</button>
+        <div class="status" id="reconcileStatus"></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <h2>4) ITC Exports</h2>
+        <button id="exportItcBtn">Get ITC Links</button>
+        <div class="links" id="itcLinks"></div>
+      </div>
+
+      <div class="card">
+        <h2>5) Upload Sales (GSTR-1)</h2>
+        <label>Sales Excel/CSV</label>
+        <input id="salesFile" type="file" />
+        <button id="uploadSalesBtn">Upload Sales</button>
+        <div class="status" id="salesStatus"></div>
+      </div>
+
+      <div class="card">
+        <h2>6) GSTR-1 Exports</h2>
+        <button id="exportGstr1Btn">Get GSTR-1 Links</button>
+        <div class="links" id="gstr1Links"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>IDs</h2>
+    <div class="status">
+      <div>dataset_id: <code id="datasetId">-</code></div>
+      <div>two_b_id: <code id="twoBId">-</code></div>
+      <div>sales_id: <code id="salesId">-</code></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let datasetId = null;
+    let twoBId = null;
+    let salesId = null;
+
+    async function uploadPurchases() {
+      const file = $("purchasesFile").files[0];
+      const clientId = $("clientId").value || "demo";
+      if (!file) { $("purchasesStatus").textContent = "Choose a file"; return; }
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("client_id", clientId);
+      const resp = await fetch("/upload/purchases/excel", { method: "POST", body: fd });
+      const data = await resp.json();
+      datasetId = data.dataset_id; $("datasetId").textContent = datasetId || "-";
+      $("purchasesStatus").textContent = JSON.stringify(data);
+    }
+
+    async function uploadTwoB() {
+      const file = $("twoBFile").files[0];
+      if (!file) { $("twoBStatus").textContent = "Choose a file"; return; }
+      const fd = new FormData();
+      fd.append("file", file);
+      const resp = await fetch("/upload/2b", { method: "POST", body: fd });
+      const data = await resp.json();
+      twoBId = data.two_b_id; $("twoBId").textContent = twoBId || "-";
+      $("twoBStatus").textContent = JSON.stringify(data);
+    }
+
+    async function runReconcile() {
+      if (!datasetId || !twoBId) { $("reconcileStatus").textContent = "Upload purchases and 2B first"; return; }
+      const body = { dataset_id: datasetId, two_b_id: twoBId, tolerances: { amount_abs: 1, amount_pct: 0.005, date_days: 3 } };
+      const resp = await fetch("/reconcile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await resp.json();
+      $("reconcileStatus").textContent = JSON.stringify(data);
+    }
+
+    async function exportItc() {
+      if (!datasetId) { $("itcLinks").textContent = "No dataset_id"; return; }
+      const resp = await fetch(`/export/itc/${datasetId}`);
+      const data = await resp.json();
+      $("itcLinks").innerHTML = Object.entries(data).map(([k,v]) => `<a href="${v}" target="_blank">${k}</a>`).join("");
+    }
+
+    async function uploadSales() {
+      const file = $("salesFile").files[0];
+      if (!file) { $("salesStatus").textContent = "Choose a file"; return; }
+      const fd = new FormData();
+      fd.append("file", file);
+      const resp = await fetch("/upload/sales/excel", { method: "POST", body: fd });
+      const data = await resp.json();
+      salesId = data.sales_id; $("salesId").textContent = salesId || "-";
+      $("salesStatus").textContent = JSON.stringify(data);
+    }
+
+    async function exportGstr1() {
+      if (!salesId) { $("gstr1Links").textContent = "No sales_id"; return; }
+      const resp = await fetch(`/export/gstr1/${salesId}`);
+      const data = await resp.json();
+      $("gstr1Links").innerHTML = Object.entries(data).map(([k,v]) => `<a href="${v}" target="_blank">${k}</a>`).join("");
+    }
+
+    $("uploadPurchasesBtn").onclick = uploadPurchases;
+    $("uploadTwoBBtn").onclick = uploadTwoB;
+    $("reconcileBtn").onclick = runReconcile;
+    $("exportItcBtn").onclick = exportItc;
+    $("uploadSalesBtn").onclick = uploadSales;
+    $("exportGstr1Btn").onclick = exportGstr1;
+  </script>
+</body>
+</html>
+

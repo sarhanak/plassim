@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 
 app = FastAPI(title="GST-Recon-Engine v1.0")
@@ -45,4 +46,7 @@ app.include_router(reconcile_router)
 app.include_router(exports_router)
 app.include_router(ops_router)
 app.include_router(presets_router)
+
+# Static UI
+app.mount("/ui", StaticFiles(directory="ui", html=True), name="ui")
 
