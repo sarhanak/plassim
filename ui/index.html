@@ -79,6 +79,12 @@
     </div>
   </div>
 
+  <div class="card">
+    <h2>Review</h2>
+    <button id="refreshReviewBtn">Refresh Rows</button>
+    <div id="reviewRows"></div>
+  </div>
+
   <script>
     const $ = (id) => document.getElementById(id);
     let datasetId = null;
@@ -148,6 +154,24 @@
     $("exportItcBtn").onclick = exportItc;
     $("uploadSalesBtn").onclick = uploadSales;
     $("exportGstr1Btn").onclick = exportGstr1;
+
+    async function refreshReview() {
+      if (!datasetId) { $("reviewRows").textContent = "No dataset_id"; return; }
+      const resp = await fetch(`/review/${datasetId}`);
+      const data = await resp.json();
+      const html = (data.rows || []).slice(0, 25).map(r => {
+        const p = r.purchase || {}; const rec = r.recon || {}; const b = r.two_b || {};
+        return `<div style="margin:8px 0;padding:8px;border:1px solid #eee">
+          <div><b>${p.invoice_no_norm || p.invoice_no}</b> — ${rec.status || "-"} — ${rec.reason_codes ? rec.reason_codes.join(',') : ''}</div>
+          <div style="display:flex;gap:16px;font-size:12px">
+            <div><b>Our</b><br/>Amt: ${p.total_amount} | Date: ${p.invoice_date}</div>
+            <div><b>2B</b><br/>Amt: ${b.total_amount || ''} | Date: ${b.invoice_date || ''}</div>
+          </div>
+        </div>`;
+      }).join("");
+      $("reviewRows").innerHTML = html || "No rows";
+    }
+    $("refreshReviewBtn").onclick = refreshReview;
   </script>
 </body>
 </html>
